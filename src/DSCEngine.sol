@@ -114,7 +114,7 @@ contract DSCEngine is ReentrancyGuard {
     function getHealthFactor(address user) public view returns (uint256 healthfactor) {
         //Health Factor = (Total Collateral Value * Weighted Average Liquidation Threshold) / Total Borrow Value
         (uint256 totalCollateralValue, uint256 totalBorrowValue) = getAccountInformation(user);
-        uint256 healthfactor = uint256(((totalCollateralValue * LIQUIDATION_THRESHOLD) / PRECISION) / totalBorrowValue);
+        healthfactor = uint256(((totalCollateralValue * LIQUIDATION_THRESHOLD) / PRECISION) / totalBorrowValue);
         return healthfactor;
     }
 
@@ -124,14 +124,14 @@ contract DSCEngine is ReentrancyGuard {
 
     function revertWhengetHealthFactorisBroken(address user) internal view returns (bool) {
         uint256 healthfactor = getHealthFactor(user);
-        if (healthfactor <= 1e18) {
+        if (healthfactor <= 1) {
             revert DSCEngine__HealthBelowThreshold();
         }
         return true;
     }
 
     function getCollateralAmount(address user, address tokenAddress) internal view returns (uint256 amount) {
-        uint256 amount = s_collateralDeposited[user][tokenAddress];
+        amount = s_collateralDeposited[user][tokenAddress];
         return amount;
     }
 
@@ -145,7 +145,7 @@ contract DSCEngine is ReentrancyGuard {
     function getAmountinUsd(address tokenAddress, address user) internal view returns (uint256 amountinUsd) {
         int256 price = getPrice(tokenAddress);
         uint256 amount = getCollateralAmount(user, tokenAddress);
-        uint256 amountinUsd = (uint256(price) * amount) / PRICE_FEED_PRECISION;
+        amountinUsd = (uint256(price) * amount) / PRICE_FEED_PRECISION;
         return amountinUsd;
     }
 
@@ -154,7 +154,7 @@ contract DSCEngine is ReentrancyGuard {
         view
         returns (uint256 totalCollateralValue, uint256 totalBorrowValue)
     {
-        uint256 totalCollateralValue = 0;
+        totalCollateralValue = 0;
         for (uint256 i = 0; i < allowedTokens.length; i++) {
             address token = allowedTokens[i];
             uint256 usdValue = getAmountinUsd(token, user);
