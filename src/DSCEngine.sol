@@ -32,12 +32,20 @@ import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC2
 import {
     AggregatorV3Interface
 } from "@chainlink-brownie-contracts/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract DSCEngine is ReentrancyGuard {
     error DSCEngine__ValueShouldBeMoreThanZero();
     error DSCEngine__NotAnAllowedTokenAddress();
     error DSCEngine__HealthBelowThreshold();
     error DSCEngine__NotAbleToMint();
+    error DSCEngine___UnableToBurnDSC();
+    error DSCEngine___UnableToTransferCollateralToTheCollateral();
+    error DSCEngine___UnableToTransferCollateralToTheEngine();
+    error DSCEngine___UnableToTransferCollateralValueToUser();
+    error DSCEngine__InsufficientCollateral();
+
+    event DSCEngine___DscStableCoinBurnt(uint256 indexed amountDSC);
 
     modifier moreThanZero(uint256 amount) {
         if (amount == 0) {
@@ -63,6 +71,8 @@ contract DSCEngine is ReentrancyGuard {
     mapping(address token => address priceFeed) private s_tokentoPriceFeed;
     mapping(address sender => mapping(address tokenAddress => uint256 amount)) private s_collateralDeposited;
     mapping(address user => uint256 amountMinted) private s_addresstoAmountMinted;
+    mapping(address user => uint256 amountDSC) private s_addresstoAmountRedeemed;
+    mapping(address user => uint256 DscBurned) private s_addresstoAmountOfDSCburned;
 
     constructor(address[] memory tokenAddress, address[] memory priceFeed, address dscAddress) {
         for (uint256 i = 0; i < tokenAddress.length; i++) {
@@ -85,8 +95,16 @@ contract DSCEngine is ReentrancyGuard {
 
         return true;
     }
+    //////I THINK THIS WILL WORK HAND IN HAND WITH THE REDDEM COLLATERAL
+    //////CAUSE AS THE USER REDEEMS COLLATERAL THE DSC STABLECOIN WILL BE BURNED TOO
 
-    function burnDSC() external {}
+    function _burnDSC(uint256 amountToBurn) internal moreThanZero(amountToBurn) returns (bool) {
+        ///mapping (address user = uint256 DscBurned) private s_addresstoAmountOfDSCburned;
+        ///This is to track the amount of DSC burned
+        s_addresstoAmountOfDSCburned[msg.sender] += amountToBurn;
+        i_dsc.transferFrom(msg.sender, address(this), amountToBurn);
+        i_dsc.burn(amountToBurn);
+    }
 
     /*
 
@@ -102,7 +120,32 @@ contract DSCEngine is ReentrancyGuard {
         return true;
     }
 
-    function redeemCollateral() external {}
+    function redeemCollateral(address tokenAddress, uint256 amountCollateral)
+        public
+        allowedToken(tokenAddress)
+        moreThanZero(amountCollateral)
+        nonReentrant
+        returns (bool)
+    {
+        uint256 usdValue = _getUsdValue(tokenAddress, amountCollateral);
+        uint256 amountDSCToBurn = usdValue;
+
+        _burnDSC(amountDSCToBurn);
+        s_addresstoAmountMinted[msg.sender] -= amountDSCToBurn;
+        emit DSCEngine___DscStableCoinBurnt(amountDSCToBurn);
+
+        if (s_collateralDeposited[msg.sender][tokenAddress] < amountCollateral) {
+            revert DSCEngine__InsufficientCollateral();
+        }
+        s_collateralDeposited[msg.sender][tokenAddress] -= amountCollateral;
+        revertWhengetHealthFactorisBroken(msg.sender);
+        bool success = IERC20(tokenAddress).transfer(msg.sender, amountCollateral);
+        if (!success) {
+            revert DSCEngine___UnableToTransferCollateralValueToUser();
+        }
+        revertWhengetHealthFactorisBroken(msg.sender);
+        return true;
+    }
 
     function redeemCollateralforDSC() external {}
 
@@ -147,6 +190,12 @@ contract DSCEngine is ReentrancyGuard {
         uint256 amount = getCollateralAmount(user, tokenAddress);
         amountinUsd = (uint256(price) * amount) / PRICE_FEED_PRECISION;
         return amountinUsd;
+    }
+
+    function _getUsdValue(address tokenAddress, uint256 amount) internal view returns (uint256 getUsdValue) {
+        int256 price = getPrice(tokenAddress);
+        getUsdValue = (uint256(price) * amount) / PRICE_FEED_PRECISION;
+        return getUsdValue;
     }
 
     function getAccountInformation(address user)
