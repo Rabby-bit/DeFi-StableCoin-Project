@@ -47,6 +47,9 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine__UserHasEnoughCollateral();
     error DSCEngine__NotENoughCollateral();
     error DSCEngine__HealthFactorNotImproved();
+    error DSCEngine__TransferNotSuccess();
+    error DSCEngine__CantBurnWhatYouDontHave();
+    error DSCEngine___NotEnoughCollateral();
 
     event DSCEngine___DscStableCoinBurnt(uint256 indexed amountDSC);
     event DSCEngine__LiquiadationHappened(
@@ -108,12 +111,12 @@ contract DSCEngine is ReentrancyGuard {
     //////I THINK THIS WILL WORK HAND IN HAND WITH THE REDDEM COLLATERAL
     //////CAUSE AS THE USER REDEEMS COLLATERAL THE DSC STABLECOIN WILL BE BURNED TOO
 
-    function _burnDSC(uint256 amountToBurn) internal moreThanZero(amountToBurn) returns (bool) {
-        ///mapping (address user = uint256 DscBurned) private s_addresstoAmountOfDSCburned;
-        ///This is to track the amount of DSC burned
-        s_addresstoAmountOfDSCburned[msg.sender] += amountToBurn;
-        i_dsc.transferFrom(msg.sender, address(this), amountToBurn);
-        i_dsc.burn(amountToBurn);
+    function burnDSC(uint256 amountToBurn) public moreThanZero(amountToBurn) returns (bool) {
+        ///This is a function that allows a user to burn their DSC
+        ///To make it more modular made this function
+        /// function _burn(address burnFor,uint256 amount) internal view
+        _burn(msg.sender, amountToBurn);
+        return true;
     }
 
     /*
@@ -137,84 +140,59 @@ contract DSCEngine is ReentrancyGuard {
         nonReentrant
         returns (bool)
     {
-        uint256 usdValue = _getUsdValue(tokenAddress, amountCollateral);
-        uint256 amountDSCToBurn = usdValue;
-
-        _burnDSC(amountDSCToBurn);
-        s_addresstoAmountMinted[msg.sender] -= amountDSCToBurn;
-        emit DSCEngine___DscStableCoinBurnt(amountDSCToBurn);
-
-        if (s_collateralDeposited[msg.sender][tokenAddress] < amountCollateral) {
-            revert DSCEngine__InsufficientCollateral();
-        }
-        s_collateralDeposited[msg.sender][tokenAddress] -= amountCollateral;
-        revertWhengetHealthFactorisBroken(msg.sender);
-        bool success = IERC20(tokenAddress).transfer(msg.sender, amountCollateral);
-        if (!success) {
-            revert DSCEngine___UnableToTransferCollateralValueToUser();
-        }
+        //This is a function thta allows a user to redeem/ retrieve their collateral
+        ///To make it more modular made this function
+        ///function _redeemCollateral(address collateralAddress, uint256 amount,
+        // address moneyTo, address moneyFrom)
+        _redeemCollateral(tokenAddress, amountCollateral, msg.sender, msg.sender);
         revertWhengetHealthFactorisBroken(msg.sender);
         return true;
     }
 
-    function redeemCollateralforDSC() external {}
+    function redeemCollateralforDSC(uint256 amountToBurn, address tokenAddress, uint256 amountCollateral)
+        external
+        returns (bool)
+    {
+        //this will do the two burn and redeeem
+        burnDSC(amountToBurn);
+        redeemCollateral(tokenAddress, amountCollateral);
+        return true;
+    }
 
-    function liquidate(address collateralAddress, address user, uint256 debtToCover) external nonReentrant {
-        //////Checks///////
+    function liquidate(address collateralAddress, address user, uint256 debtToCover)
+        external
+        moreThanZero(debtToCover)
+        allowedToken(collateralAddress)
+        nonReentrant
+    {
+        //////////////////////////Checks////////////////////////////////////
         uint256 startingHealthFactor = getHealthFactor(user);
-        if (getHealthFactor(user) >= MIN_HEALTH_FACTOR) {
+        if (startingHealthFactor >= MIN_HEALTH_FACTOR) {
             revert DSCEngine__UserHasEnoughCollateral();
         }
-
-        /// i forgot since i am adding a parameter that allows the liquidator to decide what amount
-        //// of  money he/she would like to cover then i need to refactor
-        //// i think that i get the value of the token in relation of the debt to cover , no?
-        // so i made a get token amount function
-        uint256 tokenAmountinDSC = getTokenAmount(collateralAddress, debtToCover);
-        /// Only then  will i burn the amount of equal token  of the user using the burn function
-        /// then transfer the liquidator the money
-        ////My MISTAKE the liquidator is transferring the DSC to the collateral to the Engine
-        // IERC20(collateralAddress).transferFrom(msg.sender, address(this), debtToCover );
-        //// CORRECTLY
-        i_dsc.transferFrom(msg.sender, address(this), debtToCover);
-        _burnDSC(debtToCover);
-        s_addresstoAmountMinted[user] -= debtToCover;
-        /// then transfer the liquidator the money
-        ///then i get the usd value of the tokenAmount
-        /// using then _getUsdValue(address tokenAddress, uint256 amount)
-        ////MISTAKE
-        /// I need to transform the USD to collateral not the other way
-        //since the dsc it self is a in USD
-        // uint256 equivalentCollateral = _getUsdValue(collateralAddress, tokenAmountinDSC)
-        ////CORRECTLY
         uint256 collateralAmount = getTokenAmount(collateralAddress, debtToCover);
-        /// my thought was since 10% = 0.1 and we dont have decimal so 0.1e18 = 1e17
-        /// while this is correct
-        ///uint256 bonus = collateralAmount * 1e17;
-        /// this will be even better
         uint256 bonus = (collateralAmount * LIQUIDATION_BONUS) / LIQUIDATION_PRECISION;
-
         uint256 transferToLiquidator = collateralAmount + bonus;
-        /// I need to update the mappings
-        s_collateralDeposited[user][collateralAddress] -= transferToLiquidator;
-        //// i also need to ensure that the user actually has a the collateral
-        if (s_collateralDeposited[user][collateralAddress] >= transferToLiquidator) {
+        if (s_collateralDeposited[user][collateralAddress] < transferToLiquidator) {
             revert DSCEngine__NotENoughCollateral();
         }
-        //MISTAKE
-        /// transferFrom need approval
-        ///IERC20(collateralAddress).transferFrom(address(this), msg.sender,transferToLiquidator );
-        ///CORRECTLY will be
-        IERC20(collateralAddress).transfer(msg.sender, transferToLiquidator);
 
-        /// WE need to ensure that the healthfactor has improved
+        ////////////////////// INTERACTIONS//////////////////////////////////////
+        bool success = i_dsc.transferFrom(msg.sender, address(this), debtToCover);
+        if (!success) {
+            revert DSCEngine__TransferNotSuccess();
+        }
+        ////////////////////EFFECTS//////////////////////////////////////
+        _burn(user, debtToCover);
+        s_collateralDeposited[user][collateralAddress] -= transferToLiquidator;
+
+        /////////////////////INTERACTIONS////////////////////////////////////
+        _redeemCollateral(collateralAddress, transferToLiquidator, msg.sender, user);
+
         uint256 endingHealthFactor = getHealthFactor(user);
         if (endingHealthFactor <= startingHealthFactor) {
             revert DSCEngine__HealthFactorNotImproved();
         }
-
-        ////i will then emit an event letting everyone know that "user" has been liquidated
-
         emit DSCEngine__LiquiadationHappened(msg.sender, user, debtToCover);
     }
 
@@ -231,6 +209,28 @@ contract DSCEngine is ReentrancyGuard {
     //////////////////////////////////////////////////////////////////////////////////
     /////////////////////Private && Internal ////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////
+
+    function _burn(address burnFor, uint256 amount) internal {
+        if (s_addresstoAmountMinted[burnFor] < amount) {
+            revert DSCEngine__CantBurnWhatYouDontHave();
+        }
+        /// mapping(address user => uint256 amountMinted) private s_addresstoAmountMinted;
+        s_addresstoAmountMinted[burnFor] -= amount;
+        i_dsc.transferFrom(burnFor, address(this), amount);
+        i_dsc.burn(amount);
+    }
+
+    function _redeemCollateral(address collateralAddress, uint256 amount, address moneyTo, address moneyFrom) internal {
+        /// mapping(address sender => mapping(address tokenAddress => uint256 amount)) private s_collateralDeposited;
+        if (s_collateralDeposited[moneyFrom][collateralAddress] < amount) {
+            revert DSCEngine___NotEnoughCollateral();
+        }
+        s_collateralDeposited[moneyFrom][collateralAddress] -= amount;
+        bool success = IERC20(collateralAddress).transferFrom(moneyFrom, moneyTo, amount);
+        if (!success) {
+            revert DSCEngine__TransferNotSuccess();
+        }
+    }
 
     function revertWhengetHealthFactorisBroken(address user) internal view returns (bool) {
         uint256 healthfactor = getHealthFactor(user);
@@ -273,7 +273,7 @@ contract DSCEngine is ReentrancyGuard {
         // usd value in solidity is e18 , how ever price is e8
         ///usdValue(2) = 2e18 * 1e18(precision)
         /// price(1) = 1e8 * 1e10(additional feed)= 1e18
-        uint256 tokenAmount = (usdValue * PRECISION) / (uint256(price) * ADDITIONAL_FEED_PRECISION);
+        tokenAmount = (usdValue * PRECISION) / (uint256(price) * ADDITIONAL_FEED_PRECISION);
 
         return tokenAmount;
     }
