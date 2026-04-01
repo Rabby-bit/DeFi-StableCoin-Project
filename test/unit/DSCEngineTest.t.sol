@@ -23,12 +23,11 @@ contract DSCEngineTest is Test {
     address[] tokenAddresses;
     address[] priceFeeds;
     address wETHtokenAddress;
-        address wBTCtokenAddress;
-        address wETHpriceFeed;
-        address wBTCpriceFeed;
-        uint256 deployerKey;
-        address user;
-
+    address wBTCtokenAddress;
+    address wETHpriceFeed;
+    address wBTCpriceFeed;
+    uint256 deployerKey;
+    address user;
 
     function setUp() public {
         deployer = new DeployDSC();
@@ -39,10 +38,10 @@ contract DSCEngineTest is Test {
         wETHpriceFeed = config.wETHpriceFeed;
         wBTCpriceFeed = config.wBTCpriceFeed;
         user = makeAddr("user");
-         ERC20Mock(wETHtokenAddress).mint(user, 1000e18);
+        ERC20Mock(wETHtokenAddress).mint(user, 1000e18);
         ERC20Mock(wETHtokenAddress).approveInternal(user, address(dsc_engine), 1000e18);
-
     }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////CONSTRUCTOR TESTS//////////////////////////////////////////////////////////////////
@@ -57,20 +56,14 @@ contract DSCEngineTest is Test {
         vm.expectRevert(DSCEngine.DSCEngine__TokensAndPriceMustBeEqual.selector);
         dsc_engine = new DSCEngine(tokenAddresses, priceFeeds, address(dsc));
     }
-     
 
-    
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////FUNCTION  DEPOSITCOLLATERAL//////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////////////////////////
-     
-    
-    
-    function test__CheckCollateral() public {
-        
 
+    function test__CheckCollateral() public {
         console.log("User balance before deposit: ", ERC20Mock(wETHtokenAddress).balanceOf(user));
         //mint(address account, uint256 amount)
         uint256 amount = 20;
@@ -84,7 +77,6 @@ contract DSCEngineTest is Test {
     }
 
     function test__CheckCollateralRevertWhenAmountIsZero() public {
-
         console.log("User balance before deposit: ", ERC20Mock(wETHtokenAddress).balanceOf(user));
         //mint(address account, uint256 amount)
         uint256 amount = 0;
@@ -108,6 +100,7 @@ contract DSCEngineTest is Test {
         dsc_engine.depositCollateral(tokenAddress, amount);
         vm.stopPrank();
     }
+
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     ///////////////////////////FUNCTION MINTDSC//////////////////////////////////////////////////////////////////////////
@@ -123,7 +116,7 @@ contract DSCEngineTest is Test {
     }
 
     function test__mintDSCWhenAmountIsZero() public {
-        //Arrange 
+        //Arrange
         uint256 amount = 20;
         ///Act
         vm.startPrank(user);
@@ -131,12 +124,11 @@ contract DSCEngineTest is Test {
         vm.expectRevert(DSCEngine.DSCEngine__ValueShouldBeMoreThanZero.selector);
         dsc_engine.mintDSC(0);
         vm.stopPrank();
-
     }
 
     function test__mintDSCWhenMintingIsntSuccessFull() public {
-    ////Here i will need to simulate an account that will reject the token
-    /// Then finally check if it reverts
+        ////Here i will need to simulate an account that will reject the token
+        /// Then finally check if it reverts
     }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -149,23 +141,21 @@ contract DSCEngineTest is Test {
         uint256 amount = 30e18;
         uint256 amountCollateral = 15e18;
         vm.startPrank(user);
-        console.log( "Balance of user before deposit" , IERC20(wETHtokenAddress).balanceOf(user) );
-    
+        console.log("Balance of user before deposit", IERC20(wETHtokenAddress).balanceOf(user));
+
         uint256 userBalanceBeforeDeposit = IERC20(wETHtokenAddress).balanceOf(user);
         dsc_engine.depositCollateral(wETHtokenAddress, amount);
-        
-        console.log( "Balance of user after deposit" , IERC20(wETHtokenAddress).balanceOf(user) );
+
+        console.log("Balance of user after deposit", IERC20(wETHtokenAddress).balanceOf(user));
         uint256 userBalanceAfterDeposit = IERC20(wETHtokenAddress).balanceOf(user);
         dsc_engine.mintDSC(5);
 
         dsc_engine.redeemCollateral(wETHtokenAddress, amountCollateral);
-        console.log( "Balance of user after redeem" , IERC20(wETHtokenAddress).balanceOf(user) );
-        uint256 userBalanceAfterRedeem = IERC20(wETHtokenAddress).balanceOf(user);       
+        console.log("Balance of user after redeem", IERC20(wETHtokenAddress).balanceOf(user));
+        uint256 userBalanceAfterRedeem = IERC20(wETHtokenAddress).balanceOf(user);
         vm.stopPrank();
 
-        assertEq(userBalanceAfterRedeem, userBalanceBeforeDeposit - amountCollateral );
-
-        
+        assertEq(userBalanceAfterRedeem, userBalanceBeforeDeposit - amountCollateral);
     }
 
     // function test__CheckRedeemCollateralFunctionRevertWhenHealthFactorIsBroken() public {

@@ -93,11 +93,9 @@ contract DSCEngine is ReentrancyGuard {
             s_tokentoPriceFeed[tokenAddress[i]] = priceFeed[i];
             allowedTokens.push(tokenAddress[i]);
 
-        if (tokenAddress.length != priceFeed.length)
-        {
-            revert DSCEngine__TokensAndPriceMustBeEqual();
-        }
-
+            if (tokenAddress.length != priceFeed.length) {
+                revert DSCEngine__TokensAndPriceMustBeEqual();
+            }
         }
         i_dsc = DecentralizedStableCoin(dscAddress);
     }
@@ -153,7 +151,7 @@ contract DSCEngine is ReentrancyGuard {
         // address moneyTo, address moneyFrom)
         //  revertWhengetHealthFactorisBroken(msg.sender);
         _redeemCollateral(tokenAddress, amountCollateral, msg.sender, msg.sender);
-         revertWhengetHealthFactorisBroken(msg.sender);
+        revertWhengetHealthFactorisBroken(msg.sender);
         return true;
     }
 
@@ -211,7 +209,7 @@ contract DSCEngine is ReentrancyGuard {
     function getHealthFactor(address user) public view returns (uint256 healthfactor) {
         //Health Factor = (Total Collateral Value * Weighted Average Liquidation Threshold) / Total Borrow Value
         (uint256 totalCollateralValue, uint256 totalBorrowValue) = getAccountInformation(user);
-        uint256 numerator = uint256(totalCollateralValue * LIQUIDATION_THRESHOLD)/ LIQUIDATION_PRECISION;
+        uint256 numerator = uint256(totalCollateralValue * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
         healthfactor = (numerator * PRECISION) / totalBorrowValue;
         return healthfactor;
     }
@@ -235,7 +233,7 @@ contract DSCEngine is ReentrancyGuard {
         if (s_collateralDeposited[moneyFrom][collateralAddress] < amount) {
             revert DSCEngine___NotEnoughCollateral();
         }
-        
+
         s_collateralDeposited[moneyFrom][collateralAddress] -= amount;
         revertWhengetHealthFactorisBroken(moneyFrom);
         bool success = IERC20(collateralAddress).transfer(moneyTo, amount);
