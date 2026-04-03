@@ -71,7 +71,7 @@ contract DSCEngine is ReentrancyGuard {
         _;
     }
 
-    uint256 public constant LIQUIDATION_THRESHOLD = 2e17; //200%
+    uint256 public constant LIQUIDATION_THRESHOLD = 50; //200%
     uint256 public constant PRICE_FEED_PRECISION = 1e8;
     uint256 public constant PRECISION = 1e18;
     uint256 public constant LIQUIDATION_BONUS = 10;
@@ -157,6 +157,8 @@ contract DSCEngine is ReentrancyGuard {
 
     function redeemCollateralforDSC(uint256 amountToBurn, address tokenAddress, uint256 amountCollateral)
         external
+        allowedToken(tokenAddress)
+        moreThanZero(amountCollateral)
         returns (bool)
     {
         //this will do the two burn and redeeem
@@ -190,7 +192,7 @@ contract DSCEngine is ReentrancyGuard {
             revert DSCEngine__TransferNotSuccess();
         }
         ////////////////////EFFECTS//////////////////////////////////////
-        _burn(user, debtToCover);
+        _burnFromLiquidation(user, debtToCover);
         s_collateralDeposited[user][collateralAddress] -= transferToLiquidator;
 
         /////////////////////INTERACTIONS////////////////////////////////////
@@ -209,6 +211,7 @@ contract DSCEngine is ReentrancyGuard {
     function getHealthFactor(address user) public view returns (uint256 healthfactor) {
         //Health Factor = (Total Collateral Value * Weighted Average Liquidation Threshold) / Total Borrow Value
         (uint256 totalCollateralValue, uint256 totalBorrowValue) = getAccountInformation(user);
+        if (totalBorrowValue == 0) return type(uint256).max;
         uint256 numerator = uint256(totalCollateralValue * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
         healthfactor = (numerator * PRECISION) / totalBorrowValue;
         return healthfactor;
@@ -218,6 +221,11 @@ contract DSCEngine is ReentrancyGuard {
     /////////////////////Private && Internal ////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////
 
+    function _burnFromLiquidation(address user, uint256 amount) internal {
+        s_addresstoAmountMinted[user] -= amount;
+        i_dsc.burn(amount); // burn from contract balance
+    }
+
     function _burn(address burnFor, uint256 amount) internal {
         if (s_addresstoAmountMinted[burnFor] < amount) {
             revert DSCEngine__CantBurnWhatYouDontHave();
@@ -225,6 +233,7 @@ contract DSCEngine is ReentrancyGuard {
         /// mapping(address user => uint256 amountMinted) private s_addresstoAmountMinted;
         s_addresstoAmountMinted[burnFor] -= amount;
         i_dsc.transferFrom(burnFor, address(this), amount);
+        // i_dsc.approve(address(this), amount);
         i_dsc.burn(amount);
     }
 
@@ -235,8 +244,9 @@ contract DSCEngine is ReentrancyGuard {
         }
 
         s_collateralDeposited[moneyFrom][collateralAddress] -= amount;
-        revertWhengetHealthFactorisBroken(moneyFrom);
+
         bool success = IERC20(collateralAddress).transfer(moneyTo, amount);
+        revertWhengetHealthFactorisBroken(moneyFrom);
         if (!success) {
             revert DSCEngine__TransferNotSuccess();
         }
@@ -289,7 +299,7 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     function getAccountInformation(address user)
-        internal
+        public
         view
         returns (uint256 totalCollateralValue, uint256 totalBorrowValue)
     {

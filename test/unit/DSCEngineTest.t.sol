@@ -9,8 +9,10 @@ import {DeployDSC} from "script/DeployDSC.s.sol";
 import {
     ERC20Mock
 } from "@chainlink-brownie-contracts/contracts/src/v0.8/vendor/openzeppelin-solidity/v4.8.3/contracts/mocks/ERC20Mock.sol";
+
 import {HelperConfig, CONSTANTS} from "script/HelperConfig.s.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {MockV3Aggregator} from "test/mocks/MockV3Aggregator.sol";
 
 contract DSCEngineTest is Test {
     error DSCEngine__ValueShouldBeMoreThanZero();
@@ -20,6 +22,7 @@ contract DSCEngineTest is Test {
     DSCEngine dsc_engine;
     DecentralizedStableCoin dsc;
     HelperConfig helperConfig;
+
     address[] tokenAddresses;
     address[] priceFeeds;
     address wETHtokenAddress;
@@ -158,17 +161,287 @@ contract DSCEngineTest is Test {
         assertEq(userBalanceAfterRedeem, userBalanceBeforeDeposit - amountCollateral);
     }
 
-    // function test__CheckRedeemCollateralFunctionRevertWhenHealthFactorIsBroken() public {
-    //     ERC20Mock(wETHtokenAddress).mint(user, 10e18);
-    //     ERC20Mock(wETHtokenAddress).approveInternal(user, address(dsc_engine), 10e18);
-    //     uint256 amount = 7e18;
+    function test__CheckRedeemCollateralFunctionRevertWhenHealthFactorIsBroken() public {
+        ERC20Mock(wETHtokenAddress).mint(user, 10e18);
+        ERC20Mock(wETHtokenAddress).approveInternal(user, address(dsc_engine), 10e18);
+        uint256 amount = 1;
+        vm.startPrank(user);
+        dsc_engine.depositCollateral(wETHtokenAddress, amount);
+        (uint256 collateral, uint256 debt) = dsc_engine.getAccountInformation(user);
+        console.log("Collateral:", collateral);
+        console.log("Debt:", debt);
+        dsc_engine.mintDSC(7);
+        (uint256 collateralmint, uint256 debtmint) = dsc_engine.getAccountInformation(user);
+        uint256 healthFactorAfterMint = dsc_engine.getHealthFactor(user);
+        console.log("Collateral:", collateralmint);
+        console.log("Debt:", debtmint);
+        console.log("Health Factor:", healthFactorAfterMint);
+        vm.expectRevert(DSCEngine.DSCEngine__HealthBelowThreshold.selector);
+        dsc_engine.redeemCollateral(wETHtokenAddress, amount);
+        (uint256 collateralredeem, uint256 debtredeem) = dsc_engine.getAccountInformation(user);
+        console.log("Collateral:", collateralredeem);
+        console.log("Debt:", debtredeem);
+        vm.stopPrank();
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////FUNCTION REDEEMCOLLATERALFORDSC//////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    function test__redeemCollateralforDSC() public {
+        uint256 amountToBurn = 4;
+        uint256 amount = 20;
+        uint256 amountToMint = 5;
+        uint256 amountCollateral = 2;
+        address user2 = makeAddr("user2");
+        ERC20Mock(wETHtokenAddress).mint(user2, 1000e18);
+        ERC20Mock(wETHtokenAddress).approveInternal(user2, address(dsc_engine), 1000e18);
+
+        vm.startPrank(user2);
+        dsc_engine.depositCollateral(wETHtokenAddress, amount);
+        dsc_engine.mintDSC(amountToBurn);
+        uint256 dsc_engineBalance = IERC20(wETHtokenAddress).balanceOf(address(dsc_engine));
+        console.log("Balance of user before deposit", IERC20(wETHtokenAddress).balanceOf(address(dsc_engine)));
+        //i think will need an approval here for the dsc token to be able to burn it from the user address
+        //approve(address spender, uint256 value) external returns (bool);
+        IERC20(address(dsc)).approve(address(dsc_engine), amountToBurn);
+
+        dsc_engine.redeemCollateralforDSC(amountToBurn, wETHtokenAddress, amountCollateral);
+
+        uint256 dsc_engineBalanceAfterRedeem = IERC20(wETHtokenAddress).balanceOf(address(dsc_engine));
+        console.log("Balance of user before deposit", IERC20(wETHtokenAddress).balanceOf(address(dsc_engine)));
+        vm.stopPrank();
+
+        assertEq(dsc_engineBalanceAfterRedeem, dsc_engineBalance - amountCollateral);
+    }
+
+    function test__redeemCollateralforDSCRevertAtLessThanZero() public {
+        uint256 amountToBurn = 4;
+        uint256 amount = 20;
+        uint256 amountToMint = 5;
+        uint256 amountCollateral = 0;
+        address user2 = makeAddr("user2");
+        ERC20Mock(wETHtokenAddress).mint(user2, 1000e18);
+        ERC20Mock(wETHtokenAddress).approveInternal(user2, address(dsc_engine), 1000e18);
+
+        vm.startPrank(user2);
+        dsc_engine.depositCollateral(wETHtokenAddress, amount);
+        dsc_engine.mintDSC(amountToBurn);
+        uint256 dsc_engineBalance = IERC20(wETHtokenAddress).balanceOf(address(dsc_engine));
+        console.log("Balance of user before deposit", IERC20(wETHtokenAddress).balanceOf(address(dsc_engine)));
+        //i think will need an approval here for the dsc token to be able to burn it from the user address
+        //approve(address spender, uint256 value) external returns (bool);
+        IERC20(address(dsc)).approve(address(dsc_engine), amountToBurn);
+        vm.expectRevert(DSCEngine.DSCEngine__ValueShouldBeMoreThanZero.selector);
+        dsc_engine.redeemCollateralforDSC(amountToBurn, wETHtokenAddress, amountCollateral);
+        vm.stopPrank();
+    }
+
+    function test__redeemCollateralforDSCRevertAtNotAllowedTokenAddress() public {
+        uint256 amountToBurn = 4;
+        uint256 amount = 20;
+        uint256 amountToMint = 5;
+        uint256 amountCollateral = 0;
+        address user2 = makeAddr("user2");
+        ERC20Mock(wETHtokenAddress).mint(user2, 1000e18);
+        ERC20Mock(wETHtokenAddress).approveInternal(user2, address(dsc_engine), 1000e18);
+
+        vm.startPrank(user2);
+        dsc_engine.depositCollateral(wETHtokenAddress, amount);
+        dsc_engine.mintDSC(amountToBurn);
+        uint256 dsc_engineBalance = IERC20(wETHtokenAddress).balanceOf(address(dsc_engine));
+        console.log("Balance of user before deposit", IERC20(wETHtokenAddress).balanceOf(address(dsc_engine)));
+        //i think will need an approval here for the dsc token to be able to burn it from the user address
+        //approve(address spender, uint256 value) external returns (bool);
+        IERC20(address(dsc)).approve(address(dsc_engine), amountToBurn);
+        vm.expectRevert(DSCEngine.DSCEngine__NotAnAllowedTokenAddress.selector);
+        dsc_engine.redeemCollateralforDSC(amountToBurn, address(0), amountCollateral);
+        vm.stopPrank();
+    }
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    ///////////////////////////FUNCTION LIQUIDATION//////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    function test__liquidateFunctionRevertWhenUserHasCollateral() public {
+        //Arrange
+        ///Hmm in this situation the value of the ETH should go downnn
+        //How??
+        vm.startPrank(user);
+        uint256 amount = 4;
+        dsc_engine.depositCollateral(wETHtokenAddress, amount);
+        dsc_engine.mintDSC(100);
+        (uint256 collateral, uint256 debt) = dsc_engine.getAccountInformation(user);
+        uint256 healthfactor = dsc_engine.getHealthFactor(user);
+        console.log("Collateral:", collateral);
+        console.log("Debt:", debt);
+        console.log("healthfactor:", healthfactor);
+        vm.stopPrank();
+
+        address liquidator = makeAddr("liquidator");
+        vm.startPrank(liquidator);
+        vm.expectRevert(DSCEngine.DSCEngine__UserHasEnoughCollateral.selector);
+        dsc_engine.liquidate(wETHtokenAddress, user, 40);
+        vm.stopPrank();
+
+        //Act
+        //Assert
+    }
+
+    function test__liquidateFunction() public {
+        //Arrange
+        ///Hmm in this situation the value of the ETH should go downnn
+        //How??
+        vm.startPrank(user);
+        uint256 amountU = 2;
+        dsc_engine.depositCollateral(wETHtokenAddress, amountU);
+        dsc_engine.mintDSC(100);
+        (uint256 collateral, uint256 debt) = dsc_engine.getAccountInformation(user);
+        uint256 healthfactor = dsc_engine.getHealthFactor(user);
+        console.log("Collateral:", collateral);
+        console.log("Debt:", debt);
+        console.log("healthfactor:", healthfactor);
+        vm.stopPrank();
+
+        MockV3Aggregator(wETHpriceFeed).updateAnswer(80e8);
+
+        address liquidator = makeAddr("liquidator");
+        vm.startPrank(liquidator);
+        ERC20Mock(wETHtokenAddress).mint(liquidator, 10000e18);
+        ERC20Mock(wETHtokenAddress).approveInternal(liquidator, address(dsc_engine), 10000e18);
+        uint256 amount = 5;
+        dsc_engine.depositCollateral(wETHtokenAddress, amount);
+        IERC20(address(dsc)).approve(address(dsc_engine), amount);
+
+        dsc_engine.mintDSC(50);
+
+        uint256 debtToCover = 40;
+        IERC20(address(dsc)).approve(address(dsc_engine), debtToCover);
+
+        dsc_engine.liquidate(wETHtokenAddress, user, 40);
+        vm.stopPrank();
+    }
+
+    function test__liquidateFunctionRevertInvalidCollateral() public {
+        //Arrange
+        ///Hmm in this situation the value of the ETH should go downnn
+        //How??
+        vm.startPrank(user);
+        uint256 amountU = 2;
+        dsc_engine.depositCollateral(wETHtokenAddress, amountU);
+        dsc_engine.mintDSC(100);
+        (uint256 collateral, uint256 debt) = dsc_engine.getAccountInformation(user);
+        uint256 healthfactor = dsc_engine.getHealthFactor(user);
+        console.log("Collateral:", collateral);
+        console.log("Debt:", debt);
+        console.log("healthfactor:", healthfactor);
+        vm.stopPrank();
+
+        MockV3Aggregator(wETHpriceFeed).updateAnswer(80e8);
+
+        address liquidator = makeAddr("liquidator");
+        vm.startPrank(liquidator);
+        ERC20Mock(wETHtokenAddress).mint(liquidator, 10000e18);
+        ERC20Mock(wETHtokenAddress).approveInternal(liquidator, address(dsc_engine), 10000e18);
+        uint256 amount = 5;
+        dsc_engine.depositCollateral(wETHtokenAddress, amount);
+        IERC20(address(dsc)).approve(address(dsc_engine), amount);
+
+        dsc_engine.mintDSC(50);
+
+        uint256 debtToCover = 40;
+        IERC20(address(dsc)).approve(address(dsc_engine), debtToCover);
+
+        vm.expectRevert(DSCEngine.DSCEngine__NotAnAllowedTokenAddress.selector);
+        dsc_engine.liquidate(address(0), user, 40);
+        vm.stopPrank();
+    }
+
+    function test__liquidateFunctionRevertAmountZero() public {
+        //Arrange
+        ///Hmm in this situation the value of the ETH should go downnn
+        //How??
+        vm.startPrank(user);
+        uint256 amountU = 2;
+        dsc_engine.depositCollateral(wETHtokenAddress, amountU);
+        dsc_engine.mintDSC(100);
+        (uint256 collateral, uint256 debt) = dsc_engine.getAccountInformation(user);
+        uint256 healthfactor = dsc_engine.getHealthFactor(user);
+        console.log("Collateral:", collateral);
+        console.log("Debt:", debt);
+        console.log("healthfactor:", healthfactor);
+        vm.stopPrank();
+
+        MockV3Aggregator(wETHpriceFeed).updateAnswer(80e8);
+
+        address liquidator = makeAddr("liquidator");
+        vm.startPrank(liquidator);
+        ERC20Mock(wETHtokenAddress).mint(liquidator, 10000e18);
+        ERC20Mock(wETHtokenAddress).approveInternal(liquidator, address(dsc_engine), 10000e18);
+        uint256 amount = 5;
+        dsc_engine.depositCollateral(wETHtokenAddress, amount);
+        IERC20(address(dsc)).approve(address(dsc_engine), amount);
+
+        dsc_engine.mintDSC(50);
+
+        uint256 debtToCover = 40;
+        IERC20(address(dsc)).approve(address(dsc_engine), debtToCover);
+
+        vm.expectRevert(DSCEngine.DSCEngine__ValueShouldBeMoreThanZero.selector);
+        dsc_engine.liquidate(wETHtokenAddress, user, 0);
+        vm.stopPrank();
+    }
+
+    function test__getAccountInfo() public {
+        vm.startPrank(user);
+        uint256 amountU = 2;
+        dsc_engine.depositCollateral(wETHtokenAddress, amountU);
+        dsc_engine.mintDSC(100);
+        (uint256 collateral, uint256 debt) = dsc_engine.getAccountInformation(user);
+        uint256 healthfactor = dsc_engine.getHealthFactor(user);
+        console.log("Collateral:", collateral);
+        console.log("Debt:", debt);
+        console.log("healthfactor:", healthfactor);
+        uint256 healthFactor = dsc_engine.getHealthFactor(user);
+        vm.stopPrank();
+
+        assertEq(healthfactor, healthFactor);
+    }
+
+    // function test__liquidateFunctionRevertNotENoughCollateral() public {
+    //     //Arrange
+    //     ///Hmm in this situation the value of the ETH should go downnn
+    //     //How??
     //     vm.startPrank(user);
-    //     // console.log("HF before:", getHealthFactor(user));
-    //     dsc_engine.depositCollateral(wETHtokenAddress, amount);
-    //     dsc_engine.mintDSC(7e18);
-    //     vm.expectRevert(DSCEngine.DSCEngine__HealthBelowThreshold.selector);
-    //     dsc_engine.redeemCollateral(wETHtokenAddress, 6e18);
-    //     // console.log("HF after:", getHealthFactor(user));
+    //     uint256 amountU = 2;
+    //     dsc_engine.depositCollateral(wETHtokenAddress, amountU);
+    //     dsc_engine.mintDSC(100);
+    //     (uint256 collateral, uint256 debt) = dsc_engine.getAccountInformation(user);
+    //     uint256 healthfactor = dsc_engine.getHealthFactor(user);
+    //     console.log("Collateral:", collateral);
+    //     console.log("Debt:", debt);
+    //     console.log("healthfactor:" , healthfactor);
     //     vm.stopPrank();
+
+    //     MockV3Aggregator(wETHpriceFeed).updateAnswer(800e8);
+
+    //     address liquidator = makeAddr("liquidator");
+    //     vm.startPrank(liquidator);
+    //     ERC20Mock(wETHtokenAddress).mint(liquidator, 10000e18);
+    //     ERC20Mock(wETHtokenAddress).approveInternal(liquidator, address(dsc_engine), 10000e18);
+    //     uint256 amount = 5;
+    //     dsc_engine.depositCollateral(wETHtokenAddress,amount);
+    //      IERC20(address(dsc)).approve(address(dsc_engine), amount);
+
+    //     dsc_engine.mintDSC(50);
+
+    //     uint256 debtToCover = 40;
+    //     IERC20(address(dsc)).approve(address(dsc_engine), debtToCover);
+
+    //     vm.expectRevert(DSCEngine.DSCEngine__NotENoughCollateral.selector);
+    //     dsc_engine.liquidate(wETHtokenAddress, user, 40);
+    //     vm.stopPrank();
+
     // }
 }

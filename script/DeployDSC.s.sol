@@ -11,6 +11,7 @@ contract DeployDSC is Script {
     DecentralizedStableCoin public dsc;
     DSCEngine public dsc_engine;
     HelperConfig public helperConfig;
+
     address[] tokenAddresses;
     address[] priceFeeds;
     //constructor(address[] memory tokenAddress, address[] memory priceFeed, address dscAddress)
