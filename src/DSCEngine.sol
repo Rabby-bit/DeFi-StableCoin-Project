@@ -116,7 +116,7 @@ contract DSCEngine is ReentrancyGuard {
     //////I THINK THIS WILL WORK HAND IN HAND WITH THE REDDEM COLLATERAL
     //////CAUSE AS THE USER REDEEMS COLLATERAL THE DSC STABLECOIN WILL BE BURNED TOO
 
-    function burnDSC(uint256 amountToBurn) public moreThanZero(amountToBurn) returns (bool) {
+    function burnDSC(uint256 amountToBurn) public moreThanZero(amountToBurn) nonReentrant returns (bool) {
         ///This is a function that allows a user to burn their DSC
         ///To make it more modular made this function
         /// function _burn(address burnFor,uint256 amount) internal view
@@ -159,11 +159,12 @@ contract DSCEngine is ReentrancyGuard {
         external
         allowedToken(tokenAddress)
         moreThanZero(amountCollateral)
+        nonReentrant
         returns (bool)
     {
         //this will do the two burn and redeeem
-        burnDSC(amountToBurn);
-        redeemCollateral(tokenAddress, amountCollateral);
+        _burn(msg.sender, amountToBurn);
+        _redeemCollateral(tokenAddress, amountCollateral, msg.sender, msg.sender);
         return true;
     }
 
