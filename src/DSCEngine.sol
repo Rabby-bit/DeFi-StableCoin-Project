@@ -84,6 +84,7 @@ contract DSCEngine is ReentrancyGuard {
 
     mapping(address token => address priceFeed) private s_tokentoPriceFeed;
     mapping(address sender => mapping(address tokenAddress => uint256 amount)) private s_collateralDeposited;
+    mapping(address token => uint256) private s_totalCollateralDeposited;
     mapping(address user => uint256 amountMinted) private s_addresstoAmountMinted;
     mapping(address user => uint256 amountDSC) private s_addresstoAmountRedeemed;
     mapping(address user => uint256 DscBurned) private s_addresstoAmountOfDSCburned;
@@ -110,6 +111,7 @@ contract DSCEngine is ReentrancyGuard {
         bool success = IERC20(tokenAddress).transferFrom(msg.sender, address(this), amount);
         require(success, "Transfer failed");
         s_collateralDeposited[msg.sender][tokenAddress] += amount;
+        s_totalCollateralDeposited[tokenAddress] += amount;
 
         return true;
     }
@@ -195,6 +197,7 @@ contract DSCEngine is ReentrancyGuard {
         ////////////////////EFFECTS//////////////////////////////////////
         _burnFromLiquidation(user, debtToCover);
         s_collateralDeposited[user][collateralAddress] -= transferToLiquidator;
+        s_totalCollateralDeposited[collateralAddress] -= transferToLiquidator;
 
         /////////////////////INTERACTIONS////////////////////////////////////
         _redeemCollateral(collateralAddress, transferToLiquidator, msg.sender, user);
@@ -245,6 +248,7 @@ contract DSCEngine is ReentrancyGuard {
         }
 
         s_collateralDeposited[moneyFrom][collateralAddress] -= amount;
+        s_totalCollateralDeposited[collateralAddress] -= amount;
 
         bool success = IERC20(collateralAddress).transfer(moneyTo, amount);
         revertWhengetHealthFactorisBroken(moneyFrom);
@@ -312,5 +316,39 @@ contract DSCEngine is ReentrancyGuard {
         }
         totalBorrowValue = s_addresstoAmountMinted[user];
         return (totalCollateralValue, totalBorrowValue);
+    }
+
+    function getTotalCollateralValueUSD(address token) external view returns (uint256) {
+        uint256 amountOfCollateral = s_totalCollateralDeposited[token];
+        uint256 totalCollateralInUSD = _getUsdValue(token, amountOfCollateral);
+        return totalCollateralInUSD;
+    }
+
+    function getTotalSupply() external view returns (uint256) {
+        return i_dsc.totalSupply();
+    }
+
+    function getAllowedTokens() external view returns (address[] memory) {
+        return allowedTokens;
+    }
+
+    function getCollateralBalanceOfUser(address user, address token) external view returns (uint256) {
+        return s_collateralDeposited[user][token];
+    }
+
+    // function maxDSCToMint(address user) external view returns (uint256) {
+    //     uint256 totalCollateralValue;
+    //     uint256 totalBorrowValue;
+    //     (totalCollateralValue, totalBorrowValue) = getAccountInformation(user);
+    //     if (totalCollateralValue == 0) return 0;
+    //     uint256 maxBorrow = (totalCollateralValue * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
+    //     if (maxBorrow <= totalBorrowValue) return 0;
+    //     return maxBorrow - totalBorrowValue;
+    // }
+
+    function getTotalCollateralOfUserToRedeem(address user ) external view returns (uint256) {
+        (uint256 totalCollateralValue, ) = getAccountInformation(user);
+        uint256 totalCollateralAbleToRedeem = (totalCollateralValue * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
+        return totalCollateralAbleToRedeem;
     }
 }

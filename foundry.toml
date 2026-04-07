@@ -6,4 +6,8 @@ libs = ["lib"]
 remappings = [ "@chainlink-brownie-contracts/contracts=lib/chainlink-brownie-contracts/contracts/",
 "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"]
 
+[invariant]
+runs = 256           # Number of test runs
+depth = 100          # Calls per run
+fail_on_revert = false  # Don't fail on revert, as we want to check for invariants even when transactions fail
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
