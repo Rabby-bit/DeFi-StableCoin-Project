@@ -346,8 +346,8 @@ contract DSCEngine is ReentrancyGuard {
     //     return maxBorrow - totalBorrowValue;
     // }
 
-    function getTotalCollateralOfUserToRedeem(address user ) external view returns (uint256) {
-        (uint256 totalCollateralValue, ) = getAccountInformation(user);
+    function getTotalCollateralOfUserToRedeem(address user) external view returns (uint256) {
+        (uint256 totalCollateralValue,) = getAccountInformation(user);
         uint256 totalCollateralAbleToRedeem = (totalCollateralValue * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
         return totalCollateralAbleToRedeem;
     }

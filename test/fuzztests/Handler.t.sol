@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.20;
 
-import {Test , console} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 import {DSCEngine} from "../../src/DSCEngine.sol";
 import {DecentralizedStableCoin} from "../../src/DecentralizedStableCoin.sol";
 import {DeployDSC} from "script/DeployDSC.s.sol";
@@ -77,55 +77,49 @@ contract Handler is Test {
     function mintDSCoin(uint256 tokenSeed, uint256 amount) external {
         amount = bound(amount, 1, MAX_DEPOSIT_SIZE);
         _useActor(tokenSeed);
-         try dsc_engine.mintDSC(amount) {
-        // Only runs if mint succeeds
-        ghost_mintedSum += amount;
+        try dsc_engine.mintDSC(amount) {
+            // Only runs if mint succeeds
+            ghost_mintedSum += amount;
 
-        uint256 hf = dsc_engine.getHealthFactor(currentActor);
-        console.log("Health factor after minting: ", hf);
+            uint256 hf = dsc_engine.getHealthFactor(currentActor);
+            console.log("Health factor after minting: ", hf);
+        } catch {}
 
-    } catch {
-
-    }
-
-    vm.stopPrank();
+        vm.stopPrank();
     }
 
     function redeemCollateral(uint256 tokenSeed, uint256 amountCollateral) public {
         address token = _getTokenAddress(tokenSeed);
 
-
         _useActor(tokenSeed);
         uint256 deposited = dsc_engine.getCollateralBalanceOfUser(currentActor, token);
         if (deposited == 0) {
-        vm.stopPrank();
-        return;
+            vm.stopPrank();
+            return;
         }
 
-    amountCollateral = bound(amountCollateral, 1, deposited);
+        amountCollateral = bound(amountCollateral, 1, deposited);
         try dsc_engine.redeemCollateral(token, amountCollateral) {
-        ghost_depositSum -= amountCollateral;
-        ghost_withdrawnSum += amountCollateral;
+            ghost_depositSum -= amountCollateral;
+            ghost_withdrawnSum += amountCollateral;
         } catch {
-        // ignore revert
+            // ignore revert
         }
         vm.stopPrank();
-
     }
 
     function burnDSC(uint256 tokenSeed, uint256 amountToBurn) public {
-
         amountToBurn = bound(amountToBurn, 1, MAX_DEPOSIT_SIZE);
 
         _useActor(tokenSeed);
-         uint256 balance = dsc.balanceOf(currentActor);
-         if (balance == 0) return;
-        
-         try dsc_engine.burnDSC(amountToBurn) {
-        ghost_mintedSum -= amountToBurn;
+        uint256 balance = dsc.balanceOf(currentActor);
+        if (balance == 0) return;
+
+        try dsc_engine.burnDSC(amountToBurn) {
+            ghost_mintedSum -= amountToBurn;
         } catch {
-        // ignore revert
-         }
+            // ignore revert
+        }
         vm.stopPrank();
     }
 
